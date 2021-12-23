@@ -2,9 +2,9 @@
     pragma solidity ^0.7.6;
     pragma abicoder v2;
 
-    import "./libraries.sol";
-    import "./ERC20Interfaces.sol";
-    import "./uniswapInterfaces.sol";
+    import "./Libraries.sol";
+    import "./ERC20.sol";
+    import "./Uniswap.sol";
 
     contract Events {
         event stakeStarted(
@@ -78,42 +78,42 @@
             uint32 fiveMinutesDay;
         }
         
-        Globals public CDStats;
+        Globals public DCDStats;
         
         constructor() {
-            CDStats.sharePrice = 1E7; //= 0.01 ETH
+            DCDStats.sharePrice = 1E7; //= 0.01 ETH
         }
     
         function _increaseClaimedAmt(uint256 _claimedTokens) internal {
-            CDStats.totalClaimed = CDStats.totalClaimed.add(_claimedTokens);
+            DCDStats.totalClaimed = DCDStats.totalClaimed.add(_claimedTokens);
         }
     
         function _increaseGlobals(uint256 _staked, uint256 _shares) internal {
-            CDStats.totalStakedAmt = CDStats.totalStakedAmt.add(_staked);
-            CDStats.totalShares = CDStats.totalShares.add(_shares);
+            DCDStats.totalStakedAmt = DCDStats.totalStakedAmt.add(_staked);
+            DCDStats.totalShares = DCDStats.totalShares.add(_shares);
             _emitStakeStats();
         }
     
         function _decreaseGlobals(uint256 _staked, uint256 _shares) internal {
-            CDStats.totalStakedAmt = 
-            CDStats.totalStakedAmt > _staked ? 
-            CDStats.totalStakedAmt - _staked : 0;
+            DCDStats.totalStakedAmt = 
+            DCDStats.totalStakedAmt > _staked ? 
+            DCDStats.totalStakedAmt - _staked : 0;
             
-            CDStats.totalShares =
-            CDStats.totalShares > _shares ?
-            CDStats.totalShares - _shares : 0;
+            DCDStats.totalShares =
+            DCDStats.totalShares > _shares ?
+            DCDStats.totalShares - _shares : 0;
             
             _emitStakeStats();
         }    
         
         function _emitStakeStats() private {
             emit newGlobals (
-                CDStats.totalShares,
-                CDStats.totalStakers,
-                CDStats.totalStakedAmt,
-                CDStats.totalClaimed,
-                CDStats.sharePrice,
-                CDStats.fiveMinutesDay
+                DCDStats.totalShares,
+                DCDStats.totalStakers,
+                DCDStats.totalStakedAmt,
+                DCDStats.totalClaimed,
+                DCDStats.sharePrice,
+                DCDStats.fiveMinutesDay
             );
         }
     }
@@ -577,12 +577,12 @@
         }
     
         function _increaseProfitPerDividendShare(uint256 amount) internal {
-            if (CDStats.totalStakedAmt != 0) {
+            if (DCDStats.totalStakedAmt != 0) {
                 if (emptyDividendTokens != 0) {
                     amount += emptyDividendTokens;
                     emptyDividendTokens = 0;
                 }
-                profitPerDividendShare += ((amount * distributionMultiplier) / CDStats.totalStakedAmt);
+                profitPerDividendShare += ((amount * distributionMultiplier) / DCDStats.totalStakedAmt);
             } else {
                 emptyDividendTokens += amount;
             }
@@ -726,8 +726,8 @@
         }
         
         function _dayCalculation(Stake memory _stake) internal view returns (uint32) {
-            return _stake.finalDay > CDStats.fiveMinutesDay 
-                ? CDStats.fiveMinutesDay : _stake.finalDay;
+            return _stake.finalDay > DCDStats.fiveMinutesDay 
+                ? DCDStats.fiveMinutesDay : _stake.finalDay;
         }
         
         function _startDay(Stake memory _stake) internal pure returns (uint32) {
@@ -751,7 +751,7 @@
         }
     }
     
-    abstract contract CD is Additions {
+    abstract contract DCD is Additions {
     
         using SafeMath for uint256;
         using SafeMath32 for uint32;
@@ -774,14 +774,14 @@
             );
     
             require(
-                _updateDay > CDStats.fiveMinutesDay,
+                _updateDay > DCDStats.fiveMinutesDay,
                 '5Minutes: snapshot already taken for that day'
             );
     
             _dailySnapshotPoint(_updateDay);
         }
     
-        function _createCDStake(
+        function _createDCDStake(
             address _staker,
             uint256 _stakeAmt,
             uint32 _stakeLength,
@@ -795,7 +795,7 @@
         {
             _burn(_staker, _stakeAmt);
             if (total5MinutesActiveStakes[_staker] == 0) {
-                CDStats.totalStakers += 1;
+                DCDStats.totalStakers += 1;
             }
             total5MinutesActiveStakes[_staker] = total5MinutesActiveStakes[_staker].add(_stakeAmt);
             _addDividendStake(_staker, _stakeAmt);
@@ -808,12 +808,12 @@
             _newStake.details = _description;
             _newStake.stakedAmt = _stakeAmt;
             _newStake.isActive = true;
-            _newStake.stakeShares = _stakeShares(_stakeAmt, _stakeLength, CDStats.sharePrice);
+            _newStake.stakeShares = _stakeShares(_stakeAmt, _stakeLength, DCDStats.sharePrice);
     
             return (_newStake, _stakeID, _startDay);
         }
     
-        function _endCDStake(address _staker, bytes16 _stakeID) internal returns (Stake storage _stake, uint256 penaltyAmt){
+        function _endDCDStake(address _staker, bytes16 _stakeID) internal returns (Stake storage _stake, uint256 penaltyAmt){
             require(stakes[_staker][_stakeID].isActive, '5Minutes: not an active stake'); 
             
             _stake = stakes[_staker][_stakeID];
@@ -829,7 +829,7 @@
             dividendPayouts[_staker] = profitPerDividendShare * total5MinutesActiveStakes[_staker];
                 
             if (total5MinutesActiveStakes[_staker] == 0) {
-                CDStats.totalStakers -= 1;
+                DCDStats.totalStakers -= 1;
             }
     
             _withdrawDividends(payable(_staker), dividendsOfStaker(_staker));
@@ -847,18 +847,18 @@
         )
             internal
         {
-            uint256 totalStakedToday = CDStats.totalStakedAmt;
+            uint256 totalStakedToday = DCDStats.totalStakedAmt;
             uint256 scheduledToEndToday;
     
-            for (uint32 _day = CDStats.fiveMinutesDay; _day < _updateDay; _day++) {
+            for (uint32 _day = DCDStats.fiveMinutesDay; _day < _updateDay; _day++) {
     
                 scheduledToEndToday = scheduledToEnd[_day] + snapshots[_day - 1].scheduledToEnd;
                 Snapshot memory snapshot = snapshots[_day];
                 snapshot.scheduledToEnd = scheduledToEndToday;
     
                 snapshot.totalShares =
-                    CDStats.totalShares > scheduledToEndToday ?
-                    CDStats.totalShares - scheduledToEndToday : 0;
+                    DCDStats.totalShares > scheduledToEndToday ?
+                    DCDStats.totalShares - scheduledToEndToday : 0;
                 
                 snapshot.inflationAmt = snapshot.totalShares
                     .mul(precisionRate)
@@ -872,7 +872,7 @@
     
                 snapshots[_day] = snapshot;
     
-                CDStats.fiveMinutesDay++;
+                DCDStats.fiveMinutesDay++;
     
             }
         }
@@ -1031,18 +1031,18 @@
                     _stakingDays
                     );
                         
-                if (_newSharePrice > CDStats.sharePrice) {
+                if (_newSharePrice > DCDStats.sharePrice) {
                         
-                    _newSharePrice = _newSharePrice < CDStats.sharePrice.mul(230).div(100) ?
-                    _newSharePrice : CDStats.sharePrice.mul(230).div(100);
+                    _newSharePrice = _newSharePrice < DCDStats.sharePrice.mul(230).div(100) ?
+                    _newSharePrice : DCDStats.sharePrice.mul(230).div(100);
                         
                     emit newSharePrice(
                         _newSharePrice,
-                        CDStats.sharePrice,
+                        DCDStats.sharePrice,
                         _current5MinutesDay()
                     );
                     
-                    CDStats.sharePrice = _newSharePrice;
+                    DCDStats.sharePrice = _newSharePrice;
                 }
             }
         }
