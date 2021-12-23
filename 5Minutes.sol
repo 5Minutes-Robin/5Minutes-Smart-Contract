@@ -2,9 +2,9 @@
 pragma solidity ^0.7.6;
 pragma abicoder v2;
 
-import "./CD.sol";
+import "./DCD.sol";
 
-contract fiveMinutes is CD {
+contract fiveMinutes is DCD {
     
     using SafeMath for uint256;
     using SafeMath32 for uint32;
@@ -17,7 +17,7 @@ contract fiveMinutes is CD {
 
     receive() external payable {}
 
-    function startCDStake(
+    function startDCDStake(
         uint256 _stakeAmt, 
         uint32 _stakeLength, 
         string calldata _description) 
@@ -30,7 +30,7 @@ contract fiveMinutes is CD {
         
         (Stake memory newStake,
         bytes16 _stakeID,
-        uint32 _startDay) = _createCDStake(msg.sender, _stakeAmt, _stakeLength, _description);
+        uint32 _startDay) = _createDCDStake(msg.sender, _stakeAmt, _stakeLength, _description);
 
         stakes[msg.sender][_stakeID] = newStake;
         _increaseStakeCount(msg.sender);
@@ -49,8 +49,8 @@ contract fiveMinutes is CD {
         return (_stakeID, _startDay);
     }
 
-    function endCDStake(bytes16 _stakeID) snapshotTrigger external returns (uint256) {
-        (Stake memory endedStake, uint256 penaltyAmt) = _endCDStake(msg.sender, _stakeID);
+    function endDCDStake(bytes16 _stakeID) snapshotTrigger external returns (uint256) {
+        (Stake memory endedStake, uint256 penaltyAmt) = _endDCDStake(msg.sender, _stakeID);
         _decreaseGlobals(endedStake.stakedAmt, endedStake.stakeShares);
         _removeShares(endedStake.finalDay, endedStake.stakeShares);
         if (penaltyAmt > 0) {
@@ -110,7 +110,7 @@ contract fiveMinutes is CD {
                     
         remDays = _daysLeft(_stake);
 
-        stakerPenalty = _stakeShares(scrapeAmt, remDays, CDStats.sharePrice);
+        stakerPenalty = _stakeShares(scrapeAmt, remDays, DCDStats.sharePrice);
             
         uint256 _sharesTemp = _stake.stakeShares;
                 
@@ -154,7 +154,7 @@ contract fiveMinutes is CD {
     function claimDiomandHandsReward() external {
         uint256 rewardAmt = _claimMonthlyDiomandHandsReward(msg.sender);
         string memory claimCount = new string(rewardClaimCount[msg.sender]);
-        _createCDStake(msg.sender, rewardAmt, 30, string(abi.encodePacked("Diamond Hands Reward #", claimCount)));
+        _createDCDStake(msg.sender, rewardAmt, 30, string(abi.encodePacked("Diamond Hands Reward #", claimCount)));
         
         rewardedTokens += rewardAmt;
         emit diomandHandsRewardClaimed(msg.sender, rewardAmt, _current5MinutesDay());
