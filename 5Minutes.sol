@@ -5,7 +5,7 @@ pragma abicoder v2;
 import "./DCD.sol";
 
 contract fiveMinutes is DCD {
-    
+
     using SafeMath for uint256;
     using SafeMath32 for uint32;
 
@@ -191,12 +191,21 @@ contract fiveMinutes is DCD {
         swapAndLiquifyEnabled = enable;
     }
 
+    function manualSwap() external onlyOwner() {
+        _swap(address(this), address(this));
+    }
+
     function sharksDumpStop(bool enable) external onlyOwner() {
         stopSharkDumps = enable;
     }
 
     function whalesDumpStop(bool enable) external onlyOwner() {
         stopWhaleDumps = enable;
+    }
+
+    //This blocks whales from listing 5Minutes on a CEX, disrespecting our smart contract 
+    function blockAddress(address outLaw, bool blocked) external onlyOwner() {
+        _blockedAddrs[outLaw] = blocked;
     }
 
     function excludeAddr(address addr, bool isExempt) external onlyOwner() {
