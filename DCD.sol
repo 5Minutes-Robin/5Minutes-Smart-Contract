@@ -165,6 +165,7 @@
         mapping(address => mapping(bytes16 => uint8)) public scrapesCount;
         mapping(address => uint256) public walletBuyTimeStamp;
         mapping(address => uint256) public walletBuyAmt;
+        mapping(address => uint256) public walletTaxedAmt;
         mapping(address => uint32) public monthlyRewardClaimDay;
         mapping(address => uint256) public rewardedTokensToHolder;
         mapping(address => uint8) public rewardClaimCount;
@@ -299,12 +300,12 @@
     
             return disableSell;
         }
-        
+
         function isDiamondHand(address holder) public view returns (bool) {
             return walletBuyTimeStamp[holder] > 0 ?
             (_current5MinutesHour() - walletBuyHour(holder)) >= 1440 : false;
         }
-        
+
         //returns the amount of ETH dividends accumulated for a staker 
         function dividendsOfStaker(address staker) public view returns (uint256) {
             uint256 divPayout = profitPerDividendShare * total5MinutesActiveStakes[staker];
@@ -344,7 +345,7 @@
     
             _afterTokenTransfer(account, address(0), amount);
         }
-    
+
         function _approve(
             address owner,
             address spender,
@@ -356,19 +357,19 @@
             _allowances[owner][spender] = amount;
             emit Approval(owner, spender, amount);
         }
-    
+
         function _beforeTokenTransfer(
             address from,
             address to,
             uint256 amount
         ) internal virtual {}
-    
+
         function _afterTokenTransfer(
             address from,
             address to,
             uint256 amount
         ) internal virtual {}
-    
+
         function _transfer(
             address sender,
             address recipient,
@@ -395,7 +396,7 @@
                     _currentTime;
                 walletBuyAmt[recipient] += amount;
             }
-            //Resets the timestamp to default value if a user sells
+            //Resets the timestamp to default value if a wallet sells
             if(_current5MinutesDay() <= 365 && recipient == address(uniswapV2Pair)) {
                 walletBuyTimeStamp[sender] = 0;
                 walletBuyAmt[sender] -= amount;
@@ -404,14 +405,14 @@
             if(recipient == address(uniswapV2Pair)) {
                 sellRecord[sender] = _currentTime;
             }
-    
+
             _beforeTokenTransfer(sender, recipient, amount);
-            
+
             //This stops large holders from dumping the price at once!
             if((stopSharkDumps || stopWhaleDumps) && !(sender == address(this))) {
     
                 if(recipient == address(uniswapV2Pair)) {
-    
+
                     if (stopSharkDumps && senderBalance >= sharkLimit && senderBalance < whaleLimit) {
                         require(amount <= senderBalance / (3), "5Minutes: max sell for a shark is 33% per 24 hours");
                         require(_currentTime - sellRecord[sender] > 1 days, "5Minutes: you need to wait for 24 hours before selling again");
@@ -440,17 +441,21 @@
             uint256 sellTax = (amount * sellTaxPercent) / 100;
             uint256 buyTax = (amount * buyTaxPercent) / 100;
             uint256 transferTax = (amount * transferTaxPercent) / 100;
-            //8% fee if the user is buying
+            //8% fee if the wallet is buying
             if (sender == address(uniswapV2Pair)) {
                 _balances[address(this)] += buyTax;
                 _balances[sender] -= amount;
                 _balances[recipient] += amount - buyTax;
+
+                walletTaxedAmt[recipient] += amount;
             }
-            //12% fee if the user is selling
+            //12% fee if the wallet is selling
             else if (recipient == address(uniswapV2Pair)) {
                 _balances[address(this)] += sellTax;
                 _balances[sender] -= amount;
                 _balances[recipient] += amount - sellTax;
+
+                walletTaxedAmt[recipient] -= amount;
             }
             //5% fee for all other transfers
             else {
@@ -470,11 +475,10 @@
     
             bool distributeTax = contractBalance >= minSwapAmt;
             
-            /** 20% total tax for a complete buy and sell transactions per address
-             * 6% liquidated and added to pumper balance for manual buyback and burn
+            /** 20% total tax for a complete buy and sell transactions per address (8% => buy, 12% => sell, 5% => all other transfers)
+             * 10% liquidated and added to pumping burner balance for manual buyback and burn
              * 6% liquidated and distributed among CD stakers
              * 4% liquidated and trasnferred to development wallet
-             * 4% added to liquidity pool
             */
             if (
                 swapAndLiquifyEnabled &&
@@ -483,30 +487,28 @@
                 !(sender == address(this) && recipient == address(uniswapV2Pair))
                 )
                 {
-                    uint256 pumperShare =  (3 * contractBalance) / 10;
-                    uint256 stakingShare = (3 * contractBalance) / 10;
+                    uint256 pumperShare =  (5 * contractBalance) / 10;
+                    uint256 dividendsShare = (3 * contractBalance) / 10;
                     uint256 developmentShare = (2 * contractBalance) / 10;
-                    uint256 liquidityShare = (2 * contractBalance) / 10;
-                    uint256 swappedTax = stakingShare + developmentShare + (liquidityShare / 2) + pumperShare;
-    
+
+                    uint256 swappedTax = dividendsShare + developmentShare + pumperShare;
+
                     burntTokens += pumperShare;
     
                     _swapTokensForETH(swappedTax);
                     
                     uint256 ETHBalance = address(this).balance - (pumperETHBalance + dividendsETHBalance);
-                    
+
                     uint256 dividendsETHShare = (ETHBalance*3333) / 10000;
                     uint256 developmentETHShare = (ETHBalance*2222) / 10000;
-                    uint256 pumperETHShare = (ETHBalance*3333) / 10000;
-                    uint256 liquidityETHShare = (ETHBalance*1112) / 10000;
-                    
+                    uint256 pumperETHShare = (ETHBalance*4445) / 10000;
+
                     pumperETHBalance += pumperETHShare;
                     dividendsETHBalance += dividendsETHShare;
-    
+
                     developmentWallet.transfer(developmentETHShare);
                    _distributeDividends(dividendsETHShare);
-                    _addLiquidity(liquidityShare / 2, liquidityETHShare);
-    
+
                     emit Swap(contractBalance, ETHBalance);
                 }
         }
@@ -772,7 +774,7 @@
                 _updateDay < _current5MinutesDay(),
                 '5Minutes: day has not reached yet.'
             );
-    
+
             require(
                 _updateDay > DCDStats.fiveMinutesDay,
                 '5Minutes: snapshot already taken for that day'
@@ -780,7 +782,7 @@
     
             _dailySnapshotPoint(_updateDay);
         }
-    
+
         function _createDCDStake(
             address _staker,
             uint256 _stakeAmt,
@@ -799,7 +801,7 @@
             }
             total5MinutesActiveStakes[_staker] = total5MinutesActiveStakes[_staker].add(_stakeAmt);
             _addDividendStake(_staker, _stakeAmt);
-    
+
             _startDay = _next5MinutesDay();
             _stakeID = _generateStakeID(_staker);
             _newStake.stakingDays = _stakeLength;
@@ -812,34 +814,62 @@
     
             return (_newStake, _stakeID, _startDay);
         }
-    
-        function _endDCDStake(address _staker, bytes16 _stakeID) internal returns (Stake storage _stake, uint256 penaltyAmt){
+
+        function _endDCDStake(address _staker, bytes16 _stakeID) internal returns (Stake storage _stake, uint256 penaltyAmt, uint32 stakeLength){
             require(stakes[_staker][_stakeID].isActive, '5Minutes: not an active stake'); 
-            
+
             _stake = stakes[_staker][_stakeID];
             _stake.closeDay = _current5MinutesDay();
             _stake.rewardAmt = _calcRewardAmt(_stake);
+            stakeLength = _stake.stakingDays;
             penaltyAmt = _calcPenaltyAmt(_stake);
             _stake.penaltyAmt = penaltyAmt;
+            taxReturnAmt = walletTaxedAmt[_staker] > _stake.stakedAmt ?
+                        _staker.stakedAmt:
+                        walletTaxedAmt[_staker];
+            walletTaxedAmt[_staker] = walletTaxedAmt[_staker] > _stake.stakedAmt ?
+                                    walletTaxedAmt[_staker] - _stake.stakedAmt :
+                                    0;
             _stake.isActive = false;
-            
+
             total5MinutesActiveStakes[_staker] = 
                 total5MinutesActiveStakes[_staker] >= _stake.stakedAmt ?
                 total5MinutesActiveStakes[_staker].sub(_stake.stakedAmt) : 0;
             dividendPayouts[_staker] = profitPerDividendShare * total5MinutesActiveStakes[_staker];
-                
+   
             if (total5MinutesActiveStakes[_staker] == 0) {
                 DCDStats.totalStakers -= 1;
             }
-    
+
             _withdrawDividends(payable(_staker), dividendsOfStaker(_staker));
-     
+
             _mint(
                 _staker, 
                 _stake.stakedAmt > penaltyAmt ?
                 _stake.stakedAmt - penaltyAmt : 0);
+
             _mint(_staker, _stake.rewardAmt);
-            
+
+            if (penaltyAmt == 0 && _current5MinutesDay() > 365){
+                if (stakeLength >= 60 && stakeLength < 120) {
+                    _mint(
+                        _staker,
+                        (taxReturnAmt * 2) / 10
+                    )
+                }
+                else if (stakeLength >= 120 && stakeLength < 180) {
+                    _mint(
+                        _staker,
+                        taxReturnAmt / 10
+                    )
+                }
+                else{
+                    _mint(
+                        _staker,
+                        taxReturnAmt / 5
+                    )
+                }
+            } 
         }
     
         function _dailySnapshotPoint(
