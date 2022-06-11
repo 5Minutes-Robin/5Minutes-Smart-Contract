@@ -17,6 +17,8 @@ contract fiveMinutes is DCD {
 
     receive() external payable {}
 
+    //stake begins by calling the function
+    //length, amount and description has to be provided
     function startDCDStake(
         uint256 _stakeAmt, 
         uint32 _stakeLength, 
@@ -49,6 +51,7 @@ contract fiveMinutes is DCD {
         return (_stakeID, _startDay);
     }
 
+    //ends stake and calculates the penalty based on the length and day number
     function endDCDStake(bytes16 _stakeID) snapshotTrigger external returns (uint256) {
         (Stake memory endedStake, uint256 penaltyAmt) = _endDCDStake(msg.sender, _stakeID);
         _decreaseGlobals(endedStake.stakedAmt, endedStake.stakeShares);
@@ -75,6 +78,7 @@ contract fiveMinutes is DCD {
         return endedStake.rewardAmt;
     }
 
+    //allows staker to scrape interest off of stake for 5 times in the lifetime of stake
     function scrapeInterest(
         bytes16 _stakeID, 
         uint32 _scrapeDay)
@@ -147,10 +151,12 @@ contract fiveMinutes is DCD {
         );
     }
 
+    //allows staker to withdraw dividends earned every day
     function withdrawDividendsProfit(uint256 amount) external {
         _withdrawDividends(payable(msg.sender), amount);
     }
 
+    //calling the function will qualify the address and deposits the diomand hands reward
     function claimDiomandHandsReward() external {
         uint256 rewardAmt = _claimMonthlyDiomandHandsReward(msg.sender);
         string memory claimCount = new string(rewardClaimCount[msg.sender]);
@@ -161,7 +167,7 @@ contract fiveMinutes is DCD {
         emit Transfer(address(0), msg.sender, rewardAmt);
     }
     
-    //This function allows dev to transfer any ETH sent to the contract to an external address
+    //allows dev to transfer any ETH sent to the contract to an external address
     function withdrawLockedETH(address payable recipient, uint256 amount) external onlyOwner() {
         require(amount <= (address(this).balance - pumperETHBalance - dividendsETHBalance),
         "5Minutes: amount should not exceed the contract balance with dividends and pumper ETH shares subtracted.");
@@ -169,8 +175,8 @@ contract fiveMinutes is DCD {
         recipient.transfer(amount);
     }
 
-    //This allows dev to swap accumulated ETH for 5Miuntes pumper for buyback and burn.
-    //There is no other way the pumper ETH can be used except buyback and burn
+    //allows dev to swap accumulated ETH for buyback and burn.
+    //ETH dedeicated to pumper cannot be withdrawn by any functions
     function swap5MinutesPumperETHAndBurn(uint256 amount) external onlyOwner() {
         require(amount <= pumperETHBalance, "5Minutes: cannot swap more than pumper ETH balance.");
 
@@ -182,6 +188,7 @@ contract fiveMinutes is DCD {
         emit BurntFiveMinutes(amount);
     }
 
+    //sets the router address to apply the five minutes feature
     function setNewRouterAddrs(address _router) external onlyOwner() {
         uniswapPair = _router;
         emit newRouterAddress(uniswapPair);
@@ -203,11 +210,12 @@ contract fiveMinutes is DCD {
         stopWhaleDumps = enable;
     }
 
-    //This blocks whales from listing 5Minutes on a CEX, disrespecting our smart contract 
+    //blocks addresses listing 5minutes on centralized exchanges disrespecting the smart contract features
     function blockAddress(address outLaw, bool blocked) external onlyOwner() {
         _blockedAddrs[outLaw] = blocked;
     }
 
+    //excludes address from tax 
     function excludeAddr(address addr, bool isExempt) external onlyOwner() {
         _excludedAddrs[addr] = isExempt;
         
